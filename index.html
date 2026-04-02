@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -48,38 +48,38 @@
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h2 style="margin: 0; border: none; font-size: 24px;">🏆 PUBG Score Manager</h2>
-        <button class="btn btn-success" onclick="saveSettings()" style="font-size: 14px; padding: 10px 20px;">💾 เซฟข้อมูลทั้งหมด (Save)</button>
+        <button class="btn btn-success" onclick="saveSettings()" style="font-size: 14px; padding: 10px 20px;">💾 Save All Data</button>
     </div>
 
     <div class="grid-2">
         <div class="card">
-            <label>📋 รายชื่อทีม (ตัวอย่าง: 1 TeamA)</label>
+            <label>📋 Team List (Format: 1 TeamName)</label>
             <textarea id="teamList" rows="8" placeholder="1 Team Name 1&#10;2 Team Name 2"></textarea>
         </div>
         <div class="card">
             <label>🎮 MATCH IDs</label>
-            <textarea id="matchIds" rows="8" placeholder="วาง Match ID แต่ละบรรทัด"></textarea>
+            <textarea id="matchIds" rows="8" placeholder="Paste one Match ID per line here..."></textarea>
         </div>
     </div>
 
-    <div id="status">สถานะ: พร้อมใช้งาน</div>
+    <div id="status">Status: Ready</div>
 
     <div class="card">
         <div class="controls" style="margin-bottom: 10px;">
-            <button class="btn btn-gray" onclick="fetchPlayerStats()">🎮 โหลด Player Stats (CSV)</button>
-            <button class="btn btn-purple" onclick="renderTable('last')">📊 ดูคะแนนรอบล่าสุด</button>
-            <button class="btn btn-warning" onclick="renderTable('overall')">🏆 ดูคะแนนรวม (Overall)</button>
-            <button class="btn btn-success" onclick="processMatches()">➕ บวกคะแนนสะสม</button>
+            <button class="btn btn-gray" onclick="fetchPlayerStats()">🎮 Player Stats (CSV)</button>
+            <button class="btn btn-purple" onclick="renderTable('last')">📊 Last Match Score</button>
+            <button class="btn btn-warning" onclick="renderTable('overall')">🏆 Overall Score</button>
+            <button class="btn btn-success" onclick="processMatches()">➕ Add Match Data</button>
         </div>
         <div class="controls">
-            <button class="btn btn-orange" onclick="downloadCSV('last')">📥 โหลด CSV แมตช์ล่าสุด</button>
-            <button class="btn btn-primary" onclick="downloadCSV('overall')">📥 โหลด CSV รวม</button>
-            <button class="btn btn-danger" onclick="clearData()">🗑️ รีเซ็ตกระดาน</button>
+            <button class="btn btn-orange" onclick="downloadCSV('last')">📥 Download Last Match CSV</button>
+            <button class="btn btn-primary" onclick="downloadCSV('overall')">📥 Download Overall CSV</button>
+            <button class="btn btn-danger" onclick="clearData()">🗑️ Reset Board</button>
         </div>
     </div>
 
     <div class="card" id="tableContainer">
-        <h3 id="tableTitle" style="margin-top: 0;">ตารางคะแนน</h3>
+        <h3 id="tableTitle" style="margin-top: 0;">Scoreboard</h3>
         <div style="overflow-x: auto;">
             <table id="scoreTable">
                 <thead>
@@ -106,7 +106,7 @@
 
 <script>
     let storedMatchesData = [];
-    // ฝัง API Key ไว้เบื้องหลัง
+    // Hidden API Key
     const DEFAULT_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJkYTdhNjQwMC1lMzkwLTAxM2MtYTBhOS02ZTk3YjdkYmU4ZjkiLCJpc3MiOiJnYW1lbG9ja2VyIiwiaWF0IjoxNzEzODcwOTg4LCJwdWIiOiJibHVlaG9sZSIsInRpdGxlIjoicHViZyIsImFwcCI6ImRhbmdlcm91cy1zY3JpIn0.HbPpc0raI6eMxD3kJWu56onF7SsHKwqI6nU_1trs-lU';
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -118,8 +118,8 @@
     // ==========================================
     function saveSettings() {
         localStorage.setItem('pubg_teamList', document.getElementById('teamList').value);
-        localStorage.setItem('pubg_matchIds', document.getElementById('matchIds').value); // เซฟ Match IDs ด้วย
-        updateStatus('✅ บันทึกข้อมูลรายชื่อทีมและ Match ID ลงเบราว์เซอร์แล้ว', 'success');
+        localStorage.setItem('pubg_matchIds', document.getElementById('matchIds').value);
+        updateStatus('✅ Team List and Match IDs saved to browser successfully', 'success');
     }
 
     function loadSettings() {
@@ -129,7 +129,7 @@
         const savedData = localStorage.getItem('pubg_matchData');
         if (savedData) {
             storedMatchesData = JSON.parse(savedData);
-            updateStatus(`โหลดข้อมูลสำเร็จ (มีสะสม ${storedMatchesData.length} แมตช์)`);
+            updateStatus(`Data loaded successfully (${storedMatchesData.length} matches stored)`);
             if(storedMatchesData.length > 0) renderTable('overall');
         }
     }
@@ -139,19 +139,19 @@
     }
 
     function clearData() {
-        if(confirm("ต้องการล้างคะแนนสะสมทั้งหมดเพื่อเริ่มวันใหม่ใช่หรือไม่?")) {
+        if(confirm("Are you sure you want to reset all data and start a new board?")) {
             storedMatchesData = [];
             saveData();
             document.getElementById('matchIds').value = '';
-            localStorage.removeItem('pubg_matchIds'); // เคลียร์ ID ที่เซฟไว้ด้วย
+            localStorage.removeItem('pubg_matchIds');
             document.getElementById('tableBody').innerHTML = '';
-            updateStatus('🗑️ ล้างข้อมูลคะแนนเรียบร้อยแล้ว');
+            updateStatus('🗑️ Score data cleared successfully');
         }
     }
 
     function updateStatus(msg, type='normal') {
         const el = document.getElementById('status');
-        el.innerText = msg;
+        el.innerText = "Status: " + msg;
         el.style.backgroundColor = type === 'error' ? 'rgba(240, 71, 71, 0.1)' : 'rgba(67, 181, 129, 0.1)';
         el.style.borderLeftColor = type === 'error' ? 'var(--danger)' : (type === 'warning' ? 'var(--warning)' : 'var(--success)');
         el.style.color = type === 'error' ? 'var(--danger)' : 'var(--text-main)';
@@ -181,7 +181,7 @@
                 });
                 
                 if (response.status === 429) {
-                    alert("⚠️ API ถูกจำกัดความเร็ว (Rate Limit) กรุณารอสักครู่แล้วกดใหม่ครับ");
+                    alert("⚠️ API Rate Limit reached. Please wait a moment and try again.");
                     return null;
                 }
                 
@@ -230,9 +230,9 @@
     async function processMatches() {
         const apiKey = DEFAULT_API_KEY;
         const matchIds = document.getElementById('matchIds').value.split('\n').map(id => id.replace(/[^a-zA-Z0-9-]/g, '')).filter(id => id !== "");
-        if (matchIds.length === 0) return alert("กรุณาวาง Match ID");
+        if (matchIds.length === 0) return alert("Please paste at least one Match ID");
 
-        updateStatus("⏳ กำลังดึงข้อมูลจาก PUBG API...", "warning");
+        updateStatus("⏳ Fetching data from PUBG API...", "warning");
         const mapping = getTeamMapping();
         let addedCount = 0;
         let failedIds = [];
@@ -250,18 +250,18 @@
         if (addedCount > 0) {
             document.getElementById('matchIds').value = failedIds.join('\n');
             saveData();
-            saveSettings(); // เซฟการทำงานล่าสุดอัตโนมัติ
+            saveSettings();
             
             if (failedIds.length > 0) {
-                updateStatus(`⚠️ ดึงสำเร็จ ${addedCount} แมตช์ แต่หาไม่เจอ ${failedIds.length} แมตช์ (ID ที่หาไม่เจอจะค้างอยู่ในกล่อง)`, "warning");
-                alert(`ดึงข้อมูลไม่สำเร็จ ${failedIds.length} แมตช์ กรุณาตรวจสอบ Match ID อีกครั้ง`);
+                updateStatus(`⚠️ Successfully added ${addedCount} matches. Failed to find ${failedIds.length} matches (Failed IDs remain in the box).`, "warning");
+                alert(`Failed to fetch ${failedIds.length} matches. Please verify the Match IDs.`);
             } else {
-                updateStatus(`✅ ดึงข้อมูลสำเร็จ! เพิ่ม ${addedCount} แมตช์ (รวมสะสม ${storedMatchesData.length})`, "success");
+                updateStatus(`✅ Success! Added ${addedCount} matches (Total stored: ${storedMatchesData.length})`, "success");
             }
             renderTable('overall');
         } else {
-            updateStatus("❌ ไม่สามารถดึงข้อมูลได้ โปรดเช็ค Match ID ว่าถูกต้องหรือไม่", "error");
-            alert("ไม่พบข้อมูล Match ID ที่ระบุเลย โปรดตรวจสอบความถูกต้องของ ID");
+            updateStatus("❌ Failed to fetch data. Please verify your Match IDs.", "error");
+            alert("No Match IDs found. Please check your IDs and try again.");
         }
     }
 
@@ -278,14 +278,14 @@
         } else if (storedMatchesData.length > 0) {
             mId = storedMatchesData[storedMatchesData.length - 1][0]['Match ID']; 
         } else {
-            return alert("กรุณาวาง Match ID อย่างน้อย 1 อันในกล่องเพื่อดึงสถิติผู้เล่น");
+            return alert("Please paste at least one Match ID in the box to fetch player stats.");
         }
 
-        updateStatus(`⏳ กำลังโหลดสถิติผู้เล่นรายบุคคลของแมตช์ ${mId.substring(0,8)}...`, "warning");
+        updateStatus(`⏳ Loading player stats for match ${mId.substring(0,8)}...`, "warning");
         const mapping = getTeamMapping();
 
         const mData = await fetchPubgMatch(mId, apiKey);
-        if (!mData) return updateStatus("❌ ดึงข้อมูลผู้เล่นไม่สำเร็จ (API ไม่ตอบสนอง หรือหา ID ไม่เจอ)", "error");
+        if (!mData) return updateStatus("❌ Failed to fetch player data (API not responding or ID not found)", "error");
 
         const ps = {};
         mData.included.forEach(i => { if(i.type === 'participant') ps[i.id] = i; });
@@ -318,7 +318,7 @@
         });
 
         exportCSV(playerStats, `PlayerStats_${mId.substring(0,6)}.csv`);
-        updateStatus(`✅ ดาวน์โหลดสถิติผู้เล่นสำเร็จ!`, "success");
+        updateStatus(`✅ Player stats downloaded successfully!`, "success");
     }
 
     // ==========================================
@@ -376,11 +376,11 @@
     }
 
     function renderTable(mode) {
-        if (storedMatchesData.length === 0) return alert("ยังไม่มีข้อมูลคะแนน");
+        if (storedMatchesData.length === 0) return alert("No score data available");
         const isOverall = mode === 'overall';
         const displayData = getFormattedData(isOverall);
         
-        document.getElementById('tableTitle').innerText = isOverall ? "🏆 ตารางคะแนนรวม (Overall)" : "📊 ตารางคะแนนแมตช์ล่าสุด";
+        document.getElementById('tableTitle').innerText = isOverall ? "🏆 Overall Scoreboard" : "📊 Last Match Scoreboard";
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
 
@@ -405,7 +405,7 @@
     }
 
     function downloadCSV(mode) {
-        if (storedMatchesData.length === 0) return alert("ยังไม่มีข้อมูลคะแนน");
+        if (storedMatchesData.length === 0) return alert("No score data available");
         const data = getFormattedData(mode === 'overall');
         exportCSV(data, mode === 'overall' ? "Overall_Leaderboard.csv" : `Match_${storedMatchesData.length}.csv`);
     }
