@@ -266,7 +266,7 @@
     }
 
     // ==========================================
-    // 🎮 Player Stats (CSV Export)
+    // 🎮 Player Stats (CSV Export) + DMG TAKEN
     // ==========================================
     async function fetchPlayerStats() {
         const apiKey = DEFAULT_API_KEY;
@@ -281,7 +281,7 @@
             return alert("Please paste at least one Match ID in the box to fetch player stats.");
         }
 
-        updateStatus(`⏳ Loading player stats for match ${mId.substring(0,8)}...`, "warning");
+        updateStatus(`⏳ Loading match data for ${mId.substring(0,8)}...`, "warning");
         const mapping = getTeamMapping();
 
         const mData = await fetchPubgMatch(mId, apiKey);
@@ -290,7 +290,9 @@
         const ps = {};
         mData.included.forEach(i => { if(i.type === 'participant') ps[i.id] = i; });
 
-        const playerStats = [];
+        const playerStatsMap = {};
+        
+        // 1. Gather basic stats
         mData.included.forEach(item => {
             if (item.type === 'roster') {
                 const tid = item.attributes.stats.teamId;
@@ -298,17 +300,61 @@
                 item.relationships.participants.data.forEach(pRef => {
                     if (ps[pRef.id]) {
                         const pInfo = ps[pRef.id].attributes.stats;
-                        playerStats.push({
-                            "Team": teamName, "Player": pInfo.name || "Unknown",
+                        const pName = pInfo.name || "Unknown";
+                        playerStatsMap[pName] = {
+                            "Team": teamName, "Player": pName,
                             "Kills": pInfo.kills || 0, "Knocks": pInfo.DBNOs || 0,
                             "Assists": pInfo.assists || 0, "Damage": Math.round((pInfo.damageDealt||0)*100)/100,
+                            "DmgTaken": 0.0, // Will be filled from telemetry
                             "Headshots": pInfo.headshotKills || 0, "LongestKill": Math.round((pInfo.longestKill||0)*100)/100,
                             "TimeSurvived": Math.round((pInfo.timeSurvived||0)*100)/100
-                        });
+                        };
                     }
                 });
             }
         });
+
+        // 2. Fetch Telemetry for Dmg Taken
+        updateStatus(`⏳ Downloading Telemetry file (This may take 5-10 seconds)...`, "warning");
+        try {
+            const assetId = mData.data.relationships.assets.data[0].id;
+            const telemetryUrlItem = mData.included.find(item => item.id === assetId);
+            
+            if (telemetryUrlItem) {
+                const teleRes = await fetch(telemetryUrlItem.attributes.URL);
+                const teleData = await teleRes.json();
+
+                updateStatus(`⏳ Calculating DMG TAKEN...`, "warning");
+                teleData.forEach(event => {
+                    if (event._T === 'LogPlayerTakeDamage') {
+                        const damageType = event.damageTypeCategory || '';
+                        // Filter out Bluezone, Falling, and Vehicle hits to match Twire
+                        if (['Damage_BlueZone', 'Damage_Groggy', 'Damage_Fall', 'Damage_VehicleHit'].includes(damageType)) return;
+                        
+                        const victim = event.victim;
+                        const attacker = event.attacker;
+                        const damage = event.damage || 0.0;
+                        
+                        if (victim && victim.name) {
+                            const vName = victim.name;
+                            // Ignore self-damage
+                            if (attacker && attacker.name === vName) return;
+                            
+                            if (playerStatsMap[vName]) {
+                                playerStatsMap[vName].DmgTaken += damage;
+                            }
+                        }
+                    }
+                });
+            }
+        } catch(e) {
+            console.error("Telemetry fetch failed", e);
+            updateStatus(`⚠️ Could not fetch Telemetry (DMG TAKEN will be 0) - ${e.message}`, "warning");
+        }
+
+        // 3. Format and sort
+        const playerStats = Object.values(playerStatsMap);
+        playerStats.forEach(p => p.DmgTaken = Math.round(p.DmgTaken * 100) / 100);
 
         playerStats.sort((a,b) => {
             if(a.Team !== b.Team) return a.Team.localeCompare(b.Team);
