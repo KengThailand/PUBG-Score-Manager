@@ -66,7 +66,8 @@
 
     <div class="card">
         <div class="controls" style="margin-bottom: 10px;">
-            <button class="btn btn-gray" onclick="fetchPlayerStats()">🎮 Player Stats (CSV)</button>
+            <button class="btn btn-gray" onclick="fetchPlayerStats()">🎮 Player Stats (Last)</button>
+            <button class="btn btn-gray" style="background-color: #7f8c8d; color: white;" onclick="fetchAllPlayerStats()">🎮 Overall Player Stats</button>
             <button class="btn btn-purple" onclick="renderTable('last')">📊 Last Match Score</button>
             <button class="btn btn-warning" onclick="renderTable('overall')">🏆 Overall Score</button>
             <button class="btn btn-success" onclick="processMatches()">➕ Add Match Data</button>
@@ -266,7 +267,7 @@
     }
 
     // ==========================================
-    // 🎮 Player Stats (CSV Export) + DMG TAKEN
+    // 🎮 Player Stats (CSV Export) + DMG TAKEN (Last Match)
     // ==========================================
     async function fetchPlayerStats() {
         const apiKey = DEFAULT_API_KEY;
@@ -328,7 +329,6 @@
                 teleData.forEach(event => {
                     if (event._T === 'LogPlayerTakeDamage') {
                         const damageType = event.damageTypeCategory || '';
-                        // Filter out Bluezone, Falling, and Vehicle hits to match Twire
                         if (['Damage_BlueZone', 'Damage_Groggy', 'Damage_Fall', 'Damage_VehicleHit'].includes(damageType)) return;
                         
                         const victim = event.victim;
@@ -337,7 +337,6 @@
                         
                         if (victim && victim.name) {
                             const vName = victim.name;
-                            // Ignore self-damage
                             if (attacker && attacker.name === vName) return;
                             
                             if (playerStatsMap[vName]) {
@@ -474,6 +473,133 @@
         link.href = URL.createObjectURL(blob);
         link.download = filename;
         link.click();
+    }
+
+    // ==========================================
+    // 🎮 Overall Player Stats (All Matches)
+    // ==========================================
+    async function fetchAllPlayerStats() {
+        const apiKey = DEFAULT_API_KEY;
+        
+        // 1. ดึง Match ID จากข้อมูลที่บันทึกไว้แล้วในตาราง (storedMatchesData)
+        let matchIds = [];
+        storedMatchesData.forEach(matchData => {
+            if (matchData.length > 0 && matchData[0]["Match ID"]) {
+                const id = matchData[0]["Match ID"];
+                if (!matchIds.includes(id)) matchIds.push(id);
+            }
+        });
+
+        // 2. ดึงจากกล่องข้อความด้วย (เผื่อมี ID ใหม่ที่เพิ่งวางแต่ยังไม่ได้กด Add Match Data)
+        const textAreaIds = document.getElementById('matchIds').value.split('\n').map(id => id.replace(/[^a-zA-Z0-9-]/g, '')).filter(id => id !== "");
+        textAreaIds.forEach(id => {
+            if (!matchIds.includes(id)) matchIds.push(id);
+        });
+        
+        if (matchIds.length === 0) {
+            return alert("ไม่พบข้อมูล Match ID กรุณากด Add Match Data ก่อน หรือวาง Match ID ลงในช่อง");
+        }
+
+        const mapping = getTeamMapping();
+        const playerStatsMap = {};
+
+        for (let i = 0; i < matchIds.length; i++) {
+            let mId = matchIds[i];
+            updateStatus(`⏳ Loading match data for ${mId.substring(0,8)} (${i + 1}/${matchIds.length})...`, "warning");
+
+            const mData = await fetchPubgMatch(mId, apiKey);
+            if (!mData) {
+                console.warn(`Failed to fetch match: ${mId}`);
+                continue; 
+            }
+
+            const ps = {};
+            mData.included.forEach(item => { if(item.type === 'participant') ps[item.id] = item; });
+
+            mData.included.forEach(item => {
+                if (item.type === 'roster') {
+                    const tid = item.attributes.stats.teamId;
+                    const teamName = mapping[tid] || `Team ${tid}`;
+                    
+                    item.relationships.participants.data.forEach(pRef => {
+                        if (ps[pRef.id]) {
+                            const pInfo = ps[pRef.id].attributes.stats;
+                            const pName = pInfo.name || "Unknown";
+
+                            if (!playerStatsMap[pName]) {
+                                playerStatsMap[pName] = {
+                                    "Team": teamName, "Player": pName, "Matches Played": 0,
+                                    "Kills": 0, "Knocks": 0, "Assists": 0, "Damage": 0,
+                                    "DmgTaken": 0.0, "Headshots": 0, "LongestKill": 0,
+                                    "TimeSurvived": 0
+                                };
+                            }
+
+                            const pStats = playerStatsMap[pName];
+                            pStats["Matches Played"] += 1;
+                            pStats.Kills += pInfo.kills || 0;
+                            pStats.Knocks += pInfo.DBNOs || 0;
+                            pStats.Assists += pInfo.assists || 0;
+                            pStats.Damage += pInfo.damageDealt || 0;
+                            pStats.Headshots += pInfo.headshotKills || 0;
+                            pStats.LongestKill = Math.max(pStats.LongestKill, pInfo.longestKill || 0);
+                            pStats.TimeSurvived += pInfo.timeSurvived || 0;
+                        }
+                    });
+                }
+            });
+
+            updateStatus(`⏳ Downloading Telemetry for ${mId.substring(0,8)} (${i + 1}/${matchIds.length})...`, "warning");
+            try {
+                const assetId = mData.data.relationships.assets.data[0].id;
+                const telemetryUrlItem = mData.included.find(item => item.id === assetId);
+                
+                if (telemetryUrlItem) {
+                    const teleRes = await fetch(telemetryUrlItem.attributes.URL);
+                    const teleData = await teleRes.json();
+
+                    teleData.forEach(event => {
+                        if (event._T === 'LogPlayerTakeDamage') {
+                            const damageType = event.damageTypeCategory || '';
+                            if (['Damage_BlueZone', 'Damage_Groggy', 'Damage_Fall', 'Damage_VehicleHit'].includes(damageType)) return;
+                            
+                            const victim = event.victim;
+                            const attacker = event.attacker;
+                            const damage = event.damage || 0.0;
+                            
+                            if (victim && victim.name) {
+                                const vName = victim.name;
+                                if (attacker && attacker.name === vName) return;
+                                
+                                if (playerStatsMap[vName]) {
+                                    playerStatsMap[vName].DmgTaken += damage;
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch(e) {
+                console.error(`Telemetry fetch failed for ${mId}`, e);
+            }
+        }
+
+        const playerStats = Object.values(playerStatsMap);
+        playerStats.forEach(p => {
+            p.Damage = Math.round(p.Damage * 100) / 100;
+            p.DmgTaken = Math.round(p.DmgTaken * 100) / 100;
+            p.LongestKill = Math.round(p.LongestKill * 100) / 100;
+            p.TimeSurvived = Math.round(p.TimeSurvived * 100) / 100;
+        });
+
+        playerStats.sort((a,b) => {
+            if(a.Team !== b.Team) return a.Team.localeCompare(b.Team);
+            if(b.Kills !== a.Kills) return b.Kills - a.Kills;
+            if(b.Knocks !== a.Knocks) return b.Knocks - a.Knocks;
+            return b.Damage - a.Damage;
+        });
+
+        exportCSV(playerStats, `Overall_PlayerStats_${matchIds.length}_Matches.csv`);
+        updateStatus(`✅ Overall Player stats downloaded successfully!`, "success");
     }
 </script>
 </body>
